@@ -322,6 +322,8 @@ Region::Region()
 
     initialFilterFc = 13500;
     initialFilterQ = 0;
+
+    initialAttenuation = 0;
 }
 
 int Region::GetUnityNote()
@@ -534,6 +536,8 @@ void Region::SetGenerator(sf2::File *pFile, GenList &Gen)
     case VELOCITY:
         break;
     case INITIAL_ATTENUATION:
+        initialAttenuation = Gen.GenAmount.shAmount;
+        CheckRange("initialAttenuation", 0, 1440, initialAttenuation);
         break;
     case ENDLOOP_ADDRS_COARSE_OFFSET:
         endloopAddrsCoarseOffset = Gen.GenAmount.wAmount;
@@ -847,6 +851,14 @@ int Region::GetInitialFilterQ(Region *pPresetRegion)
     return CheckRange("GetInitialFilterQ()", 0, 960, val);
 }
 
+int Region::GetInitialAttenuation(Region *pPresetRegion)
+{
+    int val = (pPresetRegion == NULL || pPresetRegion->initialAttenuation == NONE)
+                  ? initialAttenuation
+                  : pPresetRegion->initialAttenuation + initialAttenuation;
+    return CheckRange("GetInitialAttenuation()", 0, 1440, val);
+}
+
 InstrumentBase::InstrumentBase(sf2::File *pFile)
 {
     this->pFile = pFile;
@@ -951,6 +963,7 @@ Region *Instrument::CreateRegion()
         r->delayVibLfo = pGlobalRegion->delayVibLfo;
         r->initialFilterFc = pGlobalRegion->initialFilterFc;
         r->initialFilterQ = pGlobalRegion->initialFilterQ;
+        r->initialAttenuation = pGlobalRegion->initialAttenuation;
 
         r->HasLoop = pGlobalRegion->HasLoop;
         r->LoopStart = pGlobalRegion->LoopStart;
@@ -1053,6 +1066,7 @@ Region *Preset::CreateRegion()
         NONE;
     r->freqModLfo = r->delayModLfo = r->freqVibLfo = r->delayVibLfo = NONE;
     r->initialFilterFc = r->initialFilterQ = NONE;
+    r->initialAttenuation = NONE;
 
     if (pGlobalRegion != NULL)
     {
@@ -1086,6 +1100,7 @@ Region *Preset::CreateRegion()
         r->delayVibLfo = pGlobalRegion->delayVibLfo;
         r->initialFilterFc = pGlobalRegion->initialFilterFc;
         r->initialFilterQ = pGlobalRegion->initialFilterQ;
+        r->initialAttenuation = pGlobalRegion->initialAttenuation;
     }
 
     return r;

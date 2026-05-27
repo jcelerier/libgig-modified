@@ -369,6 +369,7 @@ namespace sf2 {
             int vibLfoToPitch, freqVibLfo /* in absolute cents */;
             int delayVibLfo; // in absolute timecents
             int initialFilterFc  /* in absolute cents */, initialFilterQ /* in centibels */;
+            int initialAttenuation; // in centibels (positive = attenuation)
 
             uint exclusiveClass; // exclusive group
 
@@ -423,6 +424,7 @@ namespace sf2 {
             double GetDelayVibLfo(Region* pPresetRegion = NULL); // in seconds
             int    GetInitialFilterFc(Region* pPresetRegion); // in absolute cents
             int    GetInitialFilterQ(Region* pPresetRegion); // in centibels
+            int    GetInitialAttenuation(Region* pPresetRegion = NULL); // in centibels
 
             friend class Instrument;
             friend class Preset;
