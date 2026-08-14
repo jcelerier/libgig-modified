@@ -192,7 +192,10 @@ Sample::Sample(File *file, RIFF::Chunk *ck, RIFF::Chunk *pCkSmpl, RIFF::Chunk *p
 
     if (Start > End || !pCkSmpl || pCkSmpl->GetSize() <= End)
     {
-        throw Exception("Broken SF2 file (invalid sample info)");
+        // score fix: degrade a broken sample header to an empty sample
+        // instead of rejecting the whole bank (matches FluidSynth's
+        // tolerance for real-world banks)
+        Start = End = StartLoop = EndLoop = 0;
     }
 
     ChannelCount = 1;
@@ -213,7 +216,9 @@ Sample::Sample(File *file, RIFF::Chunk *ck, RIFF::Chunk *pCkSmpl, RIFF::Chunk *p
         std::cerr << "Linked samples not implemented yet";
         break;
     default:
-        throw Exception("Broken SF2 file (invalid sample type)");
+        // score fix: unknown sample types are treated as mono instead of
+        // rejecting the whole bank
+        break;
     }
 
     RAMCache.Size = 0;
@@ -510,7 +515,9 @@ void Region::SetGenerator(sf2::File *pFile, GenList &Gen)
         uint16_t id = Gen.GenAmount.wAmount;
         if (id >= pFile->Instruments.size())
         {
-            throw Exception("Broken SF2 file (missing instruments)");
+            // score fix: a preset zone referencing a missing instrument makes
+            // just this zone unusable, not the whole bank
+            break;
         }
         pInstrument = pFile->Instruments[id];
         break;
@@ -556,7 +563,9 @@ void Region::SetGenerator(sf2::File *pFile, GenList &Gen)
         uint16_t sid = Gen.GenAmount.wAmount;
         if (sid >= pFile->Samples.size())
         {
-            throw Exception("Broken SF2 file (missing samples)");
+            // score fix: a zone referencing a missing sample is skipped
+            // instead of rejecting the whole bank
+            break;
         }
         pSample = pFile->Samples[sid];
 

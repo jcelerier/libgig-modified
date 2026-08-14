@@ -6399,7 +6399,7 @@ namespace {
 
         // check if a .gx99 (GigaPulse) file exists
         RIFF::Chunk* ckDoxf = pRIFF->GetSubChunk(CHUNK_ID_DOXF);
-        if (ckDoxf) { // there is a .gx99 (GigaPulse) file ...
+        if (ckDoxf) try { // there is a .gx99 (GigaPulse) file ...
             std::string path = baseName + ".gx99";
             RIFF::File* pExtFile = new RIFF::File(path);
 
@@ -6424,6 +6424,10 @@ namespace {
             }
             poolFiles.push_back(pExtFile);
             ExtensionFiles.push_back(pExtFile);
+        } catch (RIFF::Exception&) {
+            // score fix: a missing or unreadable GigaPulse companion file
+            // (.gx99) should not prevent loading the instruments themselves;
+            // they merely play without their impulse response pool.
         }
 
         // load samples from extension files (if required)
