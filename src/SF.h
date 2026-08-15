@@ -340,7 +340,7 @@ namespace sf2 {
             uint32_t EndLoop;   // in sample data points (frames) from the begining of the sample data field
             uint32_t SampleRate;
             uint8_t  OriginalPitch;
-            uint8_t  PitchCorrection;
+            int8_t   PitchCorrection; ///< chPitchCorrection: signed cents to apply on playback (score fix: was misdeclared unsigned)
             uint16_t SampleLink; /* If sfSampleType indicates a left or right sample, the
                                   * sample header index of the associated right or left stereo
                                   * sample respectively; zero otherwise. */
