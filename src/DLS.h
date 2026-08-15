@@ -29,6 +29,7 @@
 
 #if WORDS_BIGENDIAN
 # define RIFF_TYPE_DLS	0x444C5320
+# define CHUNK_ID_CDL	0x63646C20  ///< score addition: DLS2 conditional chunk
 # define LIST_TYPE_WVPL	0x7776706C
 # define LIST_TYPE_DWPL 0x6477706C  ///< Seen on some files instead of a wvpl list chunk.
 # define LIST_TYPE_WAVE	0x77617665
@@ -65,6 +66,7 @@
 # define CHUNK_ID_DOXF	0x646F7866
 #else  // little endian
 # define RIFF_TYPE_DLS	0x20534C44
+# define CHUNK_ID_CDL	0x206C6463  ///< score addition: DLS2 conditional chunk
 # define LIST_TYPE_WVPL	0x6C707677
 # define LIST_TYPE_DWPL 0x6C707764  ///< Seen on some files instead of a wvpl list chunk.
 # define LIST_TYPE_WAVE	0x65766177
@@ -107,6 +109,13 @@
 
 /** DLS specific classes and definitions */
 namespace DLS {
+
+    // score addition: evaluates the DLS2 <cdl-ck> conditional chunk of the
+    // given list, if any, against a conservative software-synth capability
+    // set (DLS1+DLS2 supported, unlimited sample memory). Returns true when
+    // the list's content should be loaded. Lists without a cdl chunk always
+    // load; malformed expressions load too (degrade towards playing).
+    bool EvaluateConditionalChunk(RIFF::List* lst);
 
     typedef std::string String;
     typedef RIFF::progress_t progress_t;

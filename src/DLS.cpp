@@ -1410,15 +1410,94 @@ namespace DLS {
         return (RegionsIterator != pRegions->end()) ? *RegionsIterator : NULL;
     }
 
+    // score addition: DLS2 conditional chunk (<cdl-ck>) evaluation. Files
+    // ship DLS1 and DLS2 variants of the same content guarded by cdl
+    // expressions; without evaluating them both variants load (doubled
+    // regions, phasing). The expression is a postfix stack machine over
+    // uint32 values; queries answer for a modern software synth.
+    bool EvaluateConditionalChunk(RIFF::List* lst) {
+        RIFF::Chunk* cdl = lst ? lst->GetSubChunk(CHUNK_ID_CDL) : NULL;
+        if (!cdl) return true;
+        cdl->SetPos(0);
+        const file_offset_t size = cdl->GetSize();
+        file_offset_t pos = 0;
+        std::vector<uint32_t> st;
+        const auto pop = [&st]() -> uint32_t {
+            if (st.empty()) return 0;
+            const uint32_t v = st.back();
+            st.pop_back();
+            return v;
+        };
+        while (pos + 2 <= size) {
+            const uint16_t op = cdl->ReadUint16();
+            pos += 2;
+            uint32_t a, b;
+            switch (op) {
+                case 0x0001: b = pop(); a = pop(); st.push_back(a & b); break; // And
+                case 0x0002: b = pop(); a = pop(); st.push_back(a | b); break; // Or
+                case 0x0003: b = pop(); a = pop(); st.push_back(a ^ b); break; // Xor
+                case 0x0004: b = pop(); a = pop(); st.push_back(a + b); break; // Add
+                case 0x0005: b = pop(); a = pop(); st.push_back(a - b); break; // Subtract
+                case 0x0006: b = pop(); a = pop(); st.push_back(a * b); break; // Multiply
+                case 0x0007: b = pop(); a = pop(); st.push_back(b ? a / b : 0); break; // Divide
+                case 0x0008: b = pop(); a = pop(); st.push_back(a && b); break; // Logical And
+                case 0x0009: b = pop(); a = pop(); st.push_back(a || b); break; // Logical Or
+                case 0x000A: b = pop(); a = pop(); st.push_back(a < b); break;  // Lt
+                case 0x000B: b = pop(); a = pop(); st.push_back(a <= b); break; // Le
+                case 0x000C: b = pop(); a = pop(); st.push_back(a > b); break;  // Gt
+                case 0x000D: b = pop(); a = pop(); st.push_back(a >= b); break; // Ge
+                case 0x000E: b = pop(); a = pop(); st.push_back(a == b); break; // Eq
+                case 0x000F: a = pop(); st.push_back(!a); break;                // Not
+                case 0x0010: // Constant
+                    if (pos + 4 > size) return true;
+                    st.push_back(cdl->ReadUint32());
+                    pos += 4;
+                    break;
+                case 0x0011:   // Query
+                case 0x0012: { // QuerySupported
+                    if (pos + 16 > size) return true;
+                    dlsid_t id;
+                    id.ulData1 = cdl->ReadUint32();
+                    id.usData2 = cdl->ReadUint16();
+                    id.usData3 = cdl->ReadUint16();
+                    cdl->Read(id.abData, 8, 1);
+                    pos += 16;
+                    // Known DLSID queries, matched on Data1 (unique per id)
+                    uint32_t val = 0;
+                    bool supported = true;
+                    switch (id.ulData1) {
+                        case 0x178f2f24: val = 1; break;          // GMInHardware
+                        case 0x178f2f25: val = 0; break;          // GSInHardware
+                        case 0x178f2f26: val = 0; break;          // XGInHardware
+                        case 0x178f2f27: val = 1; break;          // SupportsDLS1
+                        case 0xf14599e5: val = 1; break;          // SupportsDLS2
+                        case 0x178f2f28: val = 0x7fffffff; break; // SampleMemorySize
+                        case 0x2a91f713: val = 48000; break;      // SamplePlaybackRate
+                        case 0xb03e1181: val = 0; break;          // ManufacturersID
+                        case 0xb03e1182: val = 0; break;          // ProductID
+                        default: supported = false; break;
+                    }
+                    st.push_back(op == 0x0011 ? val : (supported ? 1u : 0u));
+                    break;
+                }
+                default:
+                    return true; // unknown opcode: degrade towards playing
+            }
+        }
+        return st.empty() ? true : st.back() != 0;
+    }
+
     void Instrument::LoadRegions() {
         if (!pRegions) pRegions = new RegionList;
         RIFF::List* lrgn = pCkInstrument->GetSubList(LIST_TYPE_LRGN);
-        if (lrgn) {
+        if (lrgn && EvaluateConditionalChunk(lrgn)) {
             uint32_t regionCkType = (lrgn->GetSubList(LIST_TYPE_RGN2)) ? LIST_TYPE_RGN2 : LIST_TYPE_RGN; // prefer regions level 2
             RIFF::List* rgn = lrgn->GetFirstSubList();
             while (rgn) {
                 if (rgn->GetListType() == regionCkType) {
-                    pRegions->push_back(new Region(this, rgn));
+                    // score addition: skip regions whose cdl evaluates false
+                    if (EvaluateConditionalChunk(rgn))
+                        pRegions->push_back(new Region(this, rgn));
                 }
                 rgn = lrgn->GetNextSubList();
             }
@@ -1801,7 +1880,9 @@ namespace DLS {
             RIFF::List* lstInstr = lstInstruments->GetFirstSubList();
             while (lstInstr) {
                 if (lstInstr->GetListType() == LIST_TYPE_INS) {
-                    pInstruments->push_back(new Instrument(this, lstInstr));
+                    // score addition: skip instruments whose cdl evaluates false
+                    if (EvaluateConditionalChunk(lstInstr))
+                        pInstruments->push_back(new Instrument(this, lstInstr));
                 }
                 lstInstr = lstInstruments->GetNextSubList();
             }
