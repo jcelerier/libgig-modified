@@ -316,6 +316,7 @@ Region::Region()
 
     scaleTuning = 100; // Preset::CreateRegion() overrides this to 0 (additive offset)
     keynumToVolEnvHold = keynumToVolEnvDecay = 0;
+    keynum = velocity = -1;
 
     EG1PreAttackDelay = EG1Attack = EG1Hold = EG1Decay = EG1Release = -12000;
     EG1Sustain = 0;
@@ -552,8 +553,14 @@ void Region::SetGenerator(sf2::File *pFile, GenList &Gen)
         LoopStart += startloopAddrsCoarseOffset * 32768;
         break;
     case KEYNUM:
+        // score fix: was discarded
+        keynum = Gen.GenAmount.shAmount;
+        CheckRange("keynum", 0, 127, keynum);
         break;
     case VELOCITY:
+        // score fix: was discarded
+        velocity = Gen.GenAmount.shAmount;
+        CheckRange("velocity", 0, 127, velocity);
         break;
     case INITIAL_ATTENUATION:
         // score fix: keep the raw signed value (a negative preset offset is a
@@ -1017,6 +1024,8 @@ Region *Instrument::CreateRegion()
         r->scaleTuning = pGlobalRegion->scaleTuning;
         r->keynumToVolEnvHold = pGlobalRegion->keynumToVolEnvHold;
         r->keynumToVolEnvDecay = pGlobalRegion->keynumToVolEnvDecay;
+        r->keynum = pGlobalRegion->keynum;
+        r->velocity = pGlobalRegion->velocity;
 
         r->exclusiveClass = pGlobalRegion->exclusiveClass;
     }

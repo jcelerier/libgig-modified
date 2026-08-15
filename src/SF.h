@@ -372,6 +372,8 @@ namespace sf2 {
             int initialAttenuation; // in centibels (positive = attenuation)
 
             // score additions: generators libgig used to discard
+            int keynum;              ///< gen 46: forced MIDI key number for pitch/envelope purposes; -1 = not set. Instrument-zone only.
+            int velocity;            ///< gen 47: forced MIDI velocity; -1 = not set. Instrument-zone only.
             int scaleTuning;         ///< gen 56: cents of pitch change per key number; 100 = normal, 0 = fixed pitch. Preset regions hold an additive offset (default 0).
             int keynumToVolEnvHold;  ///< gen 39: timecents of hold change per key number, relative to key 60
             int keynumToVolEnvDecay; ///< gen 40: timecents of decay change per key number, relative to key 60
