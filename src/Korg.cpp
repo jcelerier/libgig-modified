@@ -23,6 +23,10 @@
 
 #include "Korg.h"
 
+#include <cctype>
+#include <filesystem>
+#include <system_error>
+
 #include <string.h> // for memset()
 
 #if WORDS_BIGENDIAN
@@ -30,12 +34,14 @@
 # define CHUNK_ID_RLP1  0x524c5031
 # define CHUNK_ID_SMP1  0x534d5031
 # define CHUNK_ID_SMD1  0x534d4431
+# define CHUNK_ID_SMF1  0x534d4631
 # define CHUNK_ID_NAME  0x4e414d45
 #else  // little endian
 # define CHUNK_ID_MSP1  0x3150534d
 # define CHUNK_ID_RLP1  0x31504c52
 # define CHUNK_ID_SMP1  0x31504d53
 # define CHUNK_ID_SMD1  0x31444d53
+# define CHUNK_ID_SMF1  0x31464d53
 # define CHUNK_ID_NAME  0x454d414e
 #endif // WORDS_BIGENDIAN
 
@@ -77,6 +83,29 @@ namespace Korg {
         return readText<12>(ck);
     }
 
+    /// score fix: case-insensitive recursive search for a file name under a
+    /// directory tree; Trinity SMF1 links routinely cross bank directories
+    /// and DOS-era media mixes case freely. Returns empty when not found.
+    inline String findFileCaseInsensitive(const String& rootDir, const String& name) {
+        namespace fs = std::filesystem;
+        const auto lower = [](String s) {
+            for (auto& c : s) c = (char) tolower((unsigned char) c);
+            return s;
+        };
+        const String want = lower(name);
+        std::error_code ec;
+        fs::recursive_directory_iterator it(
+            rootDir.empty() ? "." : rootDir,
+            fs::directory_options::skip_permission_denied, ec);
+        for (; !ec && it != fs::recursive_directory_iterator(); it.increment(ec)) {
+            std::error_code ec2;
+            if (!it->is_regular_file(ec2)) continue;
+            if (lower(it->path().filename().string()) == want)
+                return it->path().string();
+        }
+        return String();
+    }
+
     /// For example passing "FOO.KMP" will return "FOO".
     inline String removeFileTypeExtension(const String& filename) {
         size_t pos = filename.find_last_of('.');
@@ -108,6 +137,36 @@ namespace Korg {
         Start2    = smp1->ReadUint32();
         LoopStart = smp1->ReadUint32();
         LoopEnd   = smp1->ReadUint32();
+
+        // score fix: Trinity banks share audio between sample files through
+        // alias .KSF files carrying an 'SMF1' link chunk (the name of another
+        // .KSF) instead of 'SMD1' sample data; the alias's own SMP1 keeps the
+        // per-use loop points. Follow the link chain (bounded) so the sample
+        // data is read from the final target.
+        String currentPath = filename;
+        for (int depth = 0; depth < 8 && !riff->GetSubChunk(CHUNK_ID_SMD1); depth++) {
+            RIFF::Chunk* smf1 = riff->GetSubChunk(CHUNK_ID_SMF1);
+            if (!smf1 || smf1->GetSize() < 12) break;
+            const String link = readText12(smf1);
+            const size_t pos = currentPath.find_last_of("/\\");
+            const String dir =
+                (pos == String::npos) ? String() : currentPath.substr(0, pos + 1);
+            currentPath = dir + link;
+            if (!std::filesystem::exists(currentPath)) {
+                // Cross-directory link: search the surrounding bank tree
+                const size_t parentPos =
+                    dir.empty() ? String::npos : dir.find_last_of("/\\", dir.size() - 2);
+                const String parent =
+                    (parentPos == String::npos) ? dir : dir.substr(0, parentPos);
+                const String found = findFileCaseInsensitive(parent, link);
+                if (!found.empty()) currentPath = found;
+            }
+            RIFF::File* linked = new RIFF::File(
+                currentPath, CHUNK_ID_SMP1, RIFF::endian_big, RIFF::layout_flat
+            );
+            delete riff;
+            riff = linked;
+        }
 
         // read 'SMD1' chunk
         RIFF::Chunk* smd1 = riff->GetSubChunk(CHUNK_ID_SMD1);
