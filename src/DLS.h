@@ -431,6 +431,7 @@ namespace DLS {
             bool           NoSampleCompression;
             uint32_t       SampleLoops;  ///< Reflects the number of sample loops.
             sample_loop_t* pSampleLoops; ///< Points to the beginning of a sample loop array, or is NULL if there are no loops defined.
+            bool           WavesampleChunkPresent; ///< score addition: false means no 'wsmp' chunk existed and the fields above are synthetic defaults; per the DLS spec the wave-level wsmp then applies.
 
             void AddSampleLoop(sample_loop_t* pLoopDef);
             void DeleteSampleLoop(sample_loop_t* pLoopDef);
@@ -464,6 +465,16 @@ namespace DLS {
             uint16_t      BitDepth;              ///< Size of each sample per channel (only if known sample data format is used, 0 otherwise).
             file_offset_t SamplesTotal;          ///< Reflects total number of sample points (only if known sample data format is used, 0 otherwise), do not bother to change this value, it will not be saved.
             uint          FrameSize;             ///< Reflects the size (in bytes) of one single sample point (only if known sample data format is used, 0 otherwise). <b>Caution:</b> with the current version of libgig you have to upate this field by yourself whenever you change one of the following fields: Channels, BitDepth ! Ignoring this might lead to undesired behavior when i.e. calling Resize(), SetPos(), Write() or Read().
+
+            // score addition: the wave-level 'wsmp' chunk. Per the DLS spec it
+            // supplies unity note / fine tune / gain / loops for every region
+            // that does not carry its own wsmp chunk.
+            bool           WsmpPresent;
+            uint8_t        WsmpUnityNote;
+            int16_t        WsmpFineTune;
+            int32_t        WsmpGain;
+            uint32_t       WsmpSampleLoops;
+            sample_loop_t* pWsmpSampleLoops;
 
             void*         LoadSampleData();
             void          ReleaseSampleData();

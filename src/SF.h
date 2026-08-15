@@ -371,10 +371,16 @@ namespace sf2 {
             int initialFilterFc  /* in absolute cents */, initialFilterQ /* in centibels */;
             int initialAttenuation; // in centibels (positive = attenuation)
 
+            // score additions: generators libgig used to discard
+            int scaleTuning;         ///< gen 56: cents of pitch change per key number; 100 = normal, 0 = fixed pitch. Preset regions hold an additive offset (default 0).
+            int keynumToVolEnvHold;  ///< gen 39: timecents of hold change per key number, relative to key 60
+            int keynumToVolEnvDecay; ///< gen 40: timecents of decay change per key number, relative to key 60
+
             uint exclusiveClass; // exclusive group
 
             Sample* pSample;
             bool    HasLoop;
+            bool    LoopUntilRelease; ///< score addition: sampleModes == 3 (loop while the key is held, then play the rest of the sample)
             uint    LoopStart; // index (in frames) from the beginning of the sample
             uint    LoopEnd;   // index (in frames) from the beginning of the sample
             Instrument* pInstrument; // used when the region belongs to preset
@@ -398,6 +404,9 @@ namespace sf2 {
             int    GetPan(Region* pPresetRegion = NULL); // -64 - +63
             int    GetFineTune(Region* pPresetRegion = NULL); // -99 - +99
             int    GetCoarseTune(Region* pPresetRegion = NULL); // -120 - +120
+            int    GetScaleTuning(Region* pPresetRegion = NULL); // 0 - 1200, cents per key
+            int    GetKeynumToVolEnvHold(Region* pPresetRegion = NULL); // timecents per key
+            int    GetKeynumToVolEnvDecay(Region* pPresetRegion = NULL); // timecents per key
             double GetEG1PreAttackDelay(Region* pPresetRegion = NULL); // in seconds
             double GetEG1Attack(Region* pPresetRegion = NULL); // in seconds
             double GetEG1Hold(Region* pPresetRegion = NULL); // in seconds

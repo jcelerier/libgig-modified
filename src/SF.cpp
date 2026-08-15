@@ -311,7 +311,11 @@ Region::Region()
     overridingRootKey = -1; // -1 means not used
 
     HasLoop = false;
+    LoopUntilRelease = false;
     LoopStart = LoopEnd = 0;
+
+    scaleTuning = 100; // Preset::CreateRegion() overrides this to 0 (additive offset)
+    keynumToVolEnvHold = keynumToVolEnvDecay = 0;
 
     EG1PreAttackDelay = EG1Attack = EG1Hold = EG1Decay = EG1Release = -12000;
     EG1Sustain = 0;
@@ -407,12 +411,13 @@ void Region::SetGenerator(sf2::File *pFile, GenList &Gen)
         CheckRange("modEnvToPitch", -12000, 12000, modEnvToPitch);
         break;
     case INITIAL_FILTER_FC:
-        initialFilterFc = Gen.GenAmount.wAmount;
-        CheckRange("initialFilterFc", 1500, 13500, initialFilterFc);
+        // score fix: the amount is signed (preset zones hold negative offsets)
+        // and must not be clamped per level - only the preset+instrument sum
+        // is range-limited, in GetInitialFilterFc()
+        initialFilterFc = Gen.GenAmount.shAmount;
         break;
     case INITIAL_FILTER_Q:
-        initialFilterQ = Gen.GenAmount.wAmount;
-        CheckRange("initialFilterQ", 0, 960, initialFilterQ);
+        initialFilterQ = Gen.GenAmount.shAmount; // score fix: signed, clamp on the sum
         break;
     case MOD_LFO_TO_FILTER_FC:
         modLfoToFilterFc = Gen.GenAmount.shAmount;
@@ -509,8 +514,14 @@ void Region::SetGenerator(sf2::File *pFile, GenList &Gen)
         CheckRange("releaseVolEnv", -12000, 8000, EG1Release);
         break;
     case KEYNUM_TO_VOL_ENV_HOLD:
+        // score fix: was discarded
+        keynumToVolEnvHold = Gen.GenAmount.shAmount;
+        CheckRange("keynumToVolEnvHold", -1200, 1200, keynumToVolEnvHold);
         break;
     case KEYNUM_TO_VOL_ENV_DECAY:
+        // score fix: was discarded
+        keynumToVolEnvDecay = Gen.GenAmount.shAmount;
+        CheckRange("keynumToVolEnvDecay", -1200, 1200, keynumToVolEnvDecay);
         break;
     case INSTRUMENT:
     {
@@ -545,8 +556,9 @@ void Region::SetGenerator(sf2::File *pFile, GenList &Gen)
     case VELOCITY:
         break;
     case INITIAL_ATTENUATION:
+        // score fix: keep the raw signed value (a negative preset offset is a
+        // boost of the instrument value); the sum is clamped in the accessor
         initialAttenuation = Gen.GenAmount.shAmount;
-        CheckRange("initialAttenuation", 0, 1440, initialAttenuation);
         break;
     case ENDLOOP_ADDRS_COARSE_OFFSET:
         endloopAddrsCoarseOffset = Gen.GenAmount.wAmount;
@@ -576,17 +588,16 @@ void Region::SetGenerator(sf2::File *pFile, GenList &Gen)
             LoopStart += pSample->StartLoop;
             LoopEnd += pSample->EndLoop;
 
-            if (LoopStart < pSample->Start || LoopStart > pSample->End || LoopStart > LoopEnd ||
-                LoopEnd > pSample->End)
-            {
-                // Surge Fix: Turn off loop here
+            // score fix: clamp slightly out-of-range loop points into the
+            // sample window like FluidSynth does, instead of dropping the
+            // loop entirely (real-world banks are off by a frame or two and
+            // sustained instruments must keep looping); only degenerate
+            // loops are disabled.
+            if (LoopStart < pSample->Start) LoopStart = pSample->Start;
+            if (LoopStart > pSample->End)   LoopStart = pSample->End;
+            if (LoopEnd > pSample->End)     LoopEnd = pSample->End;
+            if (LoopStart + 8 > LoopEnd)
                 HasLoop = false;
-                /* throw Exception(std::string() + "Broken SF2 file (invalid loops)\n" +
-                                "LoopStart/End=" + std::to_string(LoopStart) + "/" +
-                                std::to_string(LoopEnd) +
-                                "\nSample Start/End=" + std::to_string(pSample->Start) + "/" +
-                                std::to_string(pSample->End)); */
-            }
 
             LoopStart -= pSample->Start; // Relative to the sample start
             LoopEnd -= pSample->Start;   // Relative to the sample start
@@ -595,10 +606,12 @@ void Region::SetGenerator(sf2::File *pFile, GenList &Gen)
     }
     case SAMPLE_MODES:
         HasLoop = Gen.GenAmount.wAmount & 1;
-        // TODO: 3 indicates a sound which loops for the duration of key depression
-        //       then proceeds to play the remainder of the sample.
+        // score fix: mode 3 loops while the key is held then plays the tail
+        LoopUntilRelease = (Gen.GenAmount.wAmount & 3) == 3;
         break;
     case SCALE_TUNING:
+        // score fix: was discarded (0 = fixed pitch, used by drum/SFX zones)
+        scaleTuning = Gen.GenAmount.shAmount;
         break;
     case EXCLUSIVE_CLASS:
         exclusiveClass = Gen.GenAmount.wAmount;
@@ -668,6 +681,26 @@ int Region::GetCoarseTune(Region *pPresetRegion)
     if (t > 120)
         t = 120;
     return t;
+}
+
+int Region::GetScaleTuning(Region *pPresetRegion)
+{
+    int t = (pPresetRegion == NULL) ? scaleTuning : pPresetRegion->scaleTuning + scaleTuning;
+    return CheckRange("GetScaleTuning()", 0, 1200, t);
+}
+
+int Region::GetKeynumToVolEnvHold(Region *pPresetRegion)
+{
+    int t = (pPresetRegion == NULL) ? keynumToVolEnvHold
+                                    : pPresetRegion->keynumToVolEnvHold + keynumToVolEnvHold;
+    return CheckRange("GetKeynumToVolEnvHold()", -1200, 1200, t);
+}
+
+int Region::GetKeynumToVolEnvDecay(Region *pPresetRegion)
+{
+    int t = (pPresetRegion == NULL) ? keynumToVolEnvDecay
+                                    : pPresetRegion->keynumToVolEnvDecay + keynumToVolEnvDecay;
+    return CheckRange("GetKeynumToVolEnvDecay()", -1200, 1200, t);
 }
 
 double Region::GetEG1PreAttackDelay(Region *pPresetRegion)
@@ -977,8 +1010,13 @@ Region *Instrument::CreateRegion()
         r->initialAttenuation = pGlobalRegion->initialAttenuation;
 
         r->HasLoop = pGlobalRegion->HasLoop;
+        r->LoopUntilRelease = pGlobalRegion->LoopUntilRelease;
         r->LoopStart = pGlobalRegion->LoopStart;
         r->LoopEnd = pGlobalRegion->LoopEnd;
+
+        r->scaleTuning = pGlobalRegion->scaleTuning;
+        r->keynumToVolEnvHold = pGlobalRegion->keynumToVolEnvHold;
+        r->keynumToVolEnvDecay = pGlobalRegion->keynumToVolEnvDecay;
 
         r->exclusiveClass = pGlobalRegion->exclusiveClass;
     }
@@ -1078,12 +1116,16 @@ Region *Preset::CreateRegion()
     r->freqModLfo = r->delayModLfo = r->freqVibLfo = r->delayVibLfo = NONE;
     r->initialFilterFc = r->initialFilterQ = NONE;
     r->initialAttenuation = NONE;
+    r->scaleTuning = 0; // additive offset at preset level
 
     if (pGlobalRegion != NULL)
     {
         r->pan = pGlobalRegion->pan;
         r->fineTune = pGlobalRegion->fineTune;
         r->coarseTune = pGlobalRegion->coarseTune;
+        r->scaleTuning = pGlobalRegion->scaleTuning;
+        r->keynumToVolEnvHold = pGlobalRegion->keynumToVolEnvHold;
+        r->keynumToVolEnvDecay = pGlobalRegion->keynumToVolEnvDecay;
 
         r->EG1PreAttackDelay = pGlobalRegion->EG1PreAttackDelay;
         r->EG1Attack = pGlobalRegion->EG1Attack;

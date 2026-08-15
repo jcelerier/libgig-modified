@@ -630,6 +630,7 @@ namespace DLS {
             SamplerOptions = F_WSMP_NO_COMPRESSION;
             SampleLoops    = 0;
         }
+        WavesampleChunkPresent = (wsmp != NULL); // score addition
         NoSampleDepthTruncation = SamplerOptions & F_WSMP_NO_TRUNCATION;
         NoSampleCompression     = SamplerOptions & F_WSMP_NO_COMPRESSION;
         pSampleLoops            = (SampleLoops) ? new sample_loop_t[SampleLoops] : NULL;
@@ -822,6 +823,35 @@ namespace DLS {
         SamplesTotal = (pCkData) ? (FormatTag == DLS_WAVE_FORMAT_PCM) ? pCkData->GetSize() / FrameSize
                                                                       : 0
                                  : 0;
+
+        // score addition: parse the wave-level 'wsmp' chunk; regions without
+        // their own wsmp inherit these values per the DLS spec
+        WsmpPresent = false;
+        WsmpUnityNote = 60;
+        WsmpFineTune = 0;
+        WsmpGain = 0;
+        WsmpSampleLoops = 0;
+        pWsmpSampleLoops = NULL;
+        if (RIFF::Chunk* wsmp = waveList->GetSubChunk(CHUNK_ID_WSMP)) {
+            wsmp->SetPos(0);
+            uint32_t headerSize = wsmp->ReadUint32();
+            WsmpUnityNote = (uint8_t) wsmp->ReadUint16();
+            WsmpFineTune  = wsmp->ReadInt16();
+            WsmpGain      = wsmp->ReadInt32();
+            wsmp->ReadUint32(); // options
+            WsmpSampleLoops = wsmp->ReadUint32();
+            WsmpPresent = true;
+            if (WsmpSampleLoops) {
+                pWsmpSampleLoops = new sample_loop_t[WsmpSampleLoops];
+                wsmp->SetPos(headerSize);
+                for (uint32_t i = 0; i < WsmpSampleLoops; i++) {
+                    wsmp->Read(pWsmpSampleLoops + i, 4, 4);
+                    if (pWsmpSampleLoops[i].Size > sizeof(sample_loop_t)) {
+                        wsmp->SetPos(pWsmpSampleLoops[i].Size - sizeof(sample_loop_t), RIFF::stream_curpos);
+                    }
+                }
+            }
+        }
     }
 
     /** @brief Destructor.
@@ -829,6 +859,8 @@ namespace DLS {
      * Frees all memory occupied by this sample.
      */
     Sample::~Sample() {
+        if (pWsmpSampleLoops)
+            delete[] pWsmpSampleLoops; // score addition
         if (pCkData)
             pCkData->ReleaseChunkData();
         if (pCkFormat)
@@ -1166,6 +1198,10 @@ namespace DLS {
     Sample* Region::GetSample() {
         if (pSample) return pSample;
         File* file = (File*) GetParent()->GetParent();
+        // score fix: a region of a truncated / malformed file can reference a
+        // wave pool slot that does not exist
+        if (!file->pWavePoolTable || WavePoolTableIndex >= file->WavePoolCount)
+            return NULL;
         uint64_t soughtoffset = file->pWavePoolTable[WavePoolTableIndex];
         Sample* sample = file->GetFirstSample();
         while (sample) {
