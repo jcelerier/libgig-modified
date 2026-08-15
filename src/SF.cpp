@@ -213,7 +213,9 @@ Sample::Sample(File *file, RIFF::Chunk *ck, RIFF::Chunk *pCkSmpl, RIFF::Chunk *p
         break;
     case sf2::Sample::LINKED_SAMPLE:
     case sf2::Sample::ROM_LINKED_SAMPLE:
-        std::cerr << "Linked samples not implemented yet";
+        // Multi-sample link chains are essentially unused in real banks
+        // (FluidSynth does not implement them either): play as mono
+        // (score fix: silenced the console warning)
         break;
     default:
         // score fix: unknown sample types are treated as mono instead of

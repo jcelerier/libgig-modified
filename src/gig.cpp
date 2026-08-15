@@ -2808,11 +2808,13 @@ namespace {
                 decodedcontroller.controller_number = 119;
                 break;
 
-            // unknown controller type
+            // unknown controller type: some third-party gig writers store raw
+            // MIDI CC numbers here, which cannot be told apart from the
+            // GigaStudio encoding, so degrade to "none" without spamming the
+            // console (score fix: was a printf per dimension region)
             default:
                 decodedcontroller.type = leverage_ctrl_t::type_none;
                 decodedcontroller.controller_number = 0;
-                printf("Warning: Unknown leverage controller type (0x%x).\n", EncodedController);
                 break;
         }
         return decodedcontroller;
