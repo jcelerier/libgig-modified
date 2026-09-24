@@ -44,7 +44,7 @@
 
 /** (so far) every exponential paramater in the gig format has a basis of 1.000000008813822 */
 #define GIG_EXP_DECODE(x)                       (pow(1.000000008813822, x))
-#define GIG_EXP_ENCODE(x)                       (log(x) / log(1.000000008813822))
+#define GIG_EXP_ENCODE(x)                       (gigExpEncode(x))
 #define GIG_PITCH_TRACK_EXTRACT(x)              (!(x & 0x01))
 #define GIG_PITCH_TRACK_ENCODE(x)               ((x) ? 0x00 : 0x01)
 #define GIG_VCF_RESONANCE_CTRL_EXTRACT(x)       ((x >> 4) & 0x03)
@@ -55,6 +55,18 @@
 #define GIG_EG_CTR_ATTACK_INFLUENCE_ENCODE(x)   ((x & 0x03) << 1)
 #define GIG_EG_CTR_DECAY_INFLUENCE_ENCODE(x)    ((x & 0x03) << 3)
 #define GIG_EG_CTR_RELEASE_INFLUENCE_ENCODE(x)  ((x & 0x03) << 5)
+
+/** Inverse of GIG_EXP_DECODE, saturated to the int32 range the format stores.
+ *  log() of 0 (a zero time / frequency, the default of several parameters) is
+ *  -inf, and converting a non-finite or out-of-range double to an integer is
+ *  undefined behaviour; map those to the extreme encodings instead (the
+ *  smallest value, 0x80000000, is also what x86 produced for them). */
+static int32_t gigExpEncode(double x) {
+    const double e = log(x) / log(1.000000008813822);
+    if (!(e > -2147483648.0)) return INT32_MIN; // also NaN, i.e. x < 0
+    if (e >= 2147483647.0) return INT32_MAX;
+    return (int32_t) e;
+}
 
 #define SRLZ(member) \
     archive->serializeMember(*this, member, #member);
