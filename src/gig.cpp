@@ -456,7 +456,8 @@ namespace {
             // use default values
             Manufacturer  = 0;
             Product       = 0;
-            SamplePeriod  = uint32_t(1000000000.0 / SamplesPerSecond + 0.5);
+            SamplePeriod  = SamplesPerSecond
+                ? uint32_t(1000000000.0 / SamplesPerSecond + 0.5) : 0;
             MIDIUnityNote = 60;
             FineTune      = 0;
             SMPTEFormat   = smpte_format_no_offset;
@@ -595,7 +596,11 @@ namespace {
         }
         // update 'smpl' chunk
         uint8_t* pData = (uint8_t*) pCkSmpl->LoadChunkData();
-        SamplePeriod = uint32_t(1000000000.0 / SamplesPerSecond + 0.5);
+        // A sample with no rate set (e.g. freshly added, or a broken file)
+        // has no period: 1e9 / 0 is inf, whose conversion to an integer is
+        // undefined behaviour
+        SamplePeriod = SamplesPerSecond
+            ? uint32_t(1000000000.0 / SamplesPerSecond + 0.5) : 0;
         store32(&pData[0], Manufacturer);
         store32(&pData[4], Product);
         store32(&pData[8], SamplePeriod);
