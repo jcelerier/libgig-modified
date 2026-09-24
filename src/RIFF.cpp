@@ -905,7 +905,8 @@ std::wstring utf8ToWS(const std::string &s)
             uint8_t* pNewBuffer = new uint8_t[ullNewChunkSize];
             if (!pNewBuffer) throw Exception("Could not enlarge chunk data buffer to " + ToString(ullNewChunkSize) + " bytes");
             memset(pNewBuffer, 0 , ullNewChunkSize);
-            memcpy(pNewBuffer, pChunkData, ullChunkDataSize);
+            if (pChunkData && ullChunkDataSize)
+                memcpy(pNewBuffer, pChunkData, ullChunkDataSize);
             delete[] pChunkData;
             pChunkData       = pNewBuffer;
             ullChunkDataSize = ullNewChunkSize;
